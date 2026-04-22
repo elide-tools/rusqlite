@@ -496,7 +496,10 @@ mod bindings {
 
     use std::path::Path;
 
-    static PREBUILT_BINDGENS: &[&str] = &["bindgen_3.34.1"];
+    // Elide fork: appended `bindgen_3.51.1` so `write_to_out_dir` picks it up
+    // (it selects the last entry) — matches the bundled amalgamation and the
+    // vendored `libsqlite3elide.a`.
+    static PREBUILT_BINDGENS: &[&str] = &["bindgen_3.34.1", "bindgen_3.51.1"];
 
     pub fn write_to_out_dir(_header: HeaderLocation, out_path: &Path) {
         let name = PREBUILT_BINDGENS[PREBUILT_BINDGENS.len() - 1];
