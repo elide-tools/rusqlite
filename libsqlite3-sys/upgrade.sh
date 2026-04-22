@@ -8,9 +8,12 @@ TARGET_DIR="$SCRIPT_DIR/../target"
 export SQLITE3_LIB_DIR="$SCRIPT_DIR/sqlite3"
 mkdir -p "$TARGET_DIR" "$SQLITE3_LIB_DIR"
 
-# Download and extract amalgamation
-SQLITE=sqlite-amalgamation-3530200
-curl -O https://sqlite.org/2026/$SQLITE.zip
+# Download and extract amalgamation.
+# Elide fork pins to 3.51.1 to match our vendored `libsqlite3elide.a` (sourced
+# from the elide-tools/sqlite-jni `v3.51.1-*` release). Bump this in lockstep
+# with `third_party/versions.env:SQLITE_JNI_VERSION` in WHIPLASH.
+SQLITE=sqlite-amalgamation-3510100
+curl -O https://sqlite.org/2025/$SQLITE.zip
 unzip -p "$SQLITE.zip" "$SQLITE/sqlite3.c" > "$SQLITE3_LIB_DIR/sqlite3.c"
 unzip -p "$SQLITE.zip" "$SQLITE/sqlite3.h" > "$SQLITE3_LIB_DIR/sqlite3.h"
 unzip -p "$SQLITE.zip" "$SQLITE/sqlite3ext.h" > "$SQLITE3_LIB_DIR/sqlite3ext.h"

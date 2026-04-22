@@ -369,6 +369,17 @@ fn lib_name() -> &'static str {
     }
 }
 
+// Name of the library emitted to rustc for linking. The Elide fork renames the
+// non-sqlcipher target from `sqlite3` to `sqlite3elide` so it can only resolve
+// against our vendored `libsqlite3elide.a` — never against a system libsqlite3.
+fn link_lib_name() -> &'static str {
+    if cfg!(any(feature = "sqlcipher", feature = "bundled-sqlcipher")) {
+        "sqlcipher"
+    } else {
+        "sqlite3elide"
+    }
+}
+
 pub enum HeaderLocation {
     FromEnvironment,
     Wrapper,
@@ -448,7 +459,7 @@ mod build_linked {
     }
     // Prints the necessary cargo link commands and returns the path to the header.
     fn find_sqlite() -> HeaderLocation {
-        let link_lib = lib_name();
+        let link_lib = super::link_lib_name();
 
         println!("cargo:rerun-if-env-changed={}_INCLUDE_DIR", env_prefix());
         println!("cargo:rerun-if-env-changed={}_LIB_DIR", env_prefix());
@@ -457,25 +468,20 @@ mod build_linked {
             println!("cargo:rerun-if-env-changed=VCPKGRS_DYNAMIC");
         }
 
-        // dependents can access `DEP_SQLITE3_LINK_TARGET` (`sqlite3` being the
-        // `links=` value in our Cargo.toml) to get this value. This might be
-        // useful if you need to ensure whatever crypto library sqlcipher relies
-        // on is available, for example.
+        // dependents can access `DEP_SQLITE3_LINK_TARGET` (the `links=` value in
+        // our Cargo.toml — `sqlite3` in this fork) to get this value. This might
+        // be useful if you need to ensure whatever crypto library sqlcipher
+        // relies on is available, for example.
         #[cfg(not(feature = "loadable_extension"))]
         println!("cargo:link-target={link_lib}");
 
-        // Allow users to specify where to find SQLite.
+        // Allow users to specify where to find SQLite. In the Elide fork we skip
+        // pkg-config probing entirely: the renamed `sqlite3elide` target must
+        // only resolve against our vendored static library, never against a
+        // system sqlite3 picked up via pkg-config.
         if let Ok(dir) = env::var(format!("{}_LIB_DIR", env_prefix())) {
-            // Try to use pkg-config to determine link commands
-            let pkgconfig_path = Path::new(&dir).join("pkgconfig");
-            env::set_var("PKG_CONFIG_PATH", pkgconfig_path);
             #[cfg(not(feature = "loadable_extension"))]
-            if pkg_config::Config::new()
-                .atleast_version("3.34.1")
-                .probe(link_lib)
-                .is_err()
             {
-                // Otherwise just emit the bare minimum link commands.
                 println!("cargo:rustc-link-lib={}={link_lib}", find_link_mode());
                 println!("cargo:rustc-link-search={dir}");
             }
@@ -486,24 +492,11 @@ mod build_linked {
             return header;
         }
 
-        // See if pkg-config can do everything for us.
-        if let Ok(mut lib) = pkg_config::Config::new()
-            .atleast_version("3.34.1")
-            .print_system_libs(false)
-            .probe(link_lib)
+        // No env var set; emit the bare link-lib request and let the final link
+        // fail loudly if `libsqlite3elide` is nowhere on the search path.
+        #[cfg(not(feature = "loadable_extension"))]
+        println!("cargo:rustc-link-lib={}={link_lib}", find_link_mode());
         {
-            if let Some(header) = lib.include_paths.pop() {
-                HeaderLocation::FromPath(header.to_string_lossy().into())
-            } else {
-                HeaderLocation::Wrapper
-            }
-        } else {
-            // No env var set and pkg-config couldn't help; just output the link-lib
-            // request and hope that the library exists on the system paths. We used to
-            // output /usr/lib explicitly, but that can introduce other linking problems;
-            // see https://github.com/rusqlite/rusqlite/issues/207.
-            #[cfg(not(feature = "loadable_extension"))]
-            println!("cargo:rustc-link-lib={}={link_lib}", find_link_mode());
             HeaderLocation::Wrapper
         }
     }
